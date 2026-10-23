@@ -1,0 +1,15 @@
+{
+  "name": "aether-forge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Aether Forge — Agent ID-native NFT mining on BNB Chain",
+  "scripts": {
+    "dev": "pnpm --dir web dev",
+    "dev:local": "node web/scripts/dev-local.mjs",
+    "build": "pnpm --dir web build",
+    "typecheck": "pnpm --dir web exec tsc --noEmit",
+    "contracts:build": "cd contracts && forge build",
+    "contracts:test": "cd contracts && forge test",
+    "contracts:fmt": "cd contracts && forge fmt"
+  }
+}

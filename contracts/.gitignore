@@ -1,0 +1,15 @@
+# foundry build artifacts
+out/
+cache/
+broadcast/
+deployments/
+foundry-pp/
+
+# env
+.env
+.env.local
+!.env.example
+
+# misc
+.DS_Store
+*.log

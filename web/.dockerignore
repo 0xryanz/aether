@@ -1,0 +1,15 @@
+node_modules
+.pnpm-store
+.next
+out
+.git
+.gitignore
+.env
+.env.local
+.env.*.local
+Dockerfile
+.dockerignore
+*.log
+coverage
+playwright-report
+test-results

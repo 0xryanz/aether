@@ -1,0 +1,43 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# next
+.next/
+out/
+web/.next/
+web/out/
+.vercel/
+.turbo/
+*.tsbuildinfo
+
+# foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+contracts/deployments/
+contracts/foundry-pp/
+
+# env
+.env
+.env.local
+.env.*.local
+.env.prod
+!.env.example
+!web/.env.example
+!contracts/.env.example
+
+# certificates + ACME challenge webroot (generated at runtime)
+deploy/certs/*
+!deploy/certs/.gitkeep
+deploy/www/*
+!deploy/www/.gitkeep
+
+# tests / tooling
+coverage/
+playwright-report/
+test-results/
+
+# misc
+.DS_Store
+*.log
