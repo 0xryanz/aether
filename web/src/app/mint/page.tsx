@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useAccount, useBalance, usePublicClient, useReadContract, useWriteContract } from "wagmi";
-import { keccak256, stringToHex, type Address } from "viem";
+import { decodeEventLog, keccak256, stringToHex, type Address, type TransactionReceipt } from "viem";
 import { addresses, isConfigured, usdtDecimals } from "@/lib/config";
 import { activeChain } from "@/lib/wagmi";
 import { erc20Abi, registryAbi, relicAbi } from "@/lib/abi";
@@ -11,6 +11,8 @@ import { useGlobalStats, useUserData } from "@/hooks/useAetherData";
 import { useI18n, useMounted } from "@/lib/i18n";
 import { formatUnits } from "@/lib/format";
 import { Banner, PageHead, TxStatus } from "@/components/UI";
+import { RelicArt } from "@/components/NftCards";
+import { MintReveal } from "@/components/MintReveal";
 
 type TxRequest = {
   address: `0x${string}`;
@@ -41,6 +43,7 @@ export default function MintPage() {
   const [hash, setHash] = useState<string>();
   const [error, setError] = useState<string | null>(null);
   const [mintedCount, setMintedCount] = useState(0);
+  const [mintedIds, setMintedIds] = useState<bigint[]>([]);
 
   const verified = user.verified;
   const remainingCap = Math.max(0, stats.perAgentCap - user.mintedByAgent);
@@ -98,11 +101,12 @@ export default function MintPage() {
     setState("pending");
     const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
     if (receipt.status !== "success") throw new Error("Transaction reverted");
-    return txHash;
+    return { hash: txHash, receipt };
   }
 
   async function handleMint() {
     try {
+      let mintReceipt: TransactionReceipt;
       if (currency === "usdt") {
         const amount = usdtAmount ?? 0n;
         if (user.usdtAllowanceRelic < amount) {
@@ -113,24 +117,47 @@ export default function MintPage() {
             args: [addresses.relic, amount],
           });
         }
-        await send({
-          address: addresses.relic,
-          abi: relicAbi,
-          functionName: "mintWithUSDT",
-          args: [BigInt(maxQuantity)],
-        });
+        mintReceipt = (
+          await send({
+            address: addresses.relic,
+            abi: relicAbi,
+            functionName: "mintWithUSDT",
+            args: [BigInt(maxQuantity)],
+          })
+        ).receipt;
       } else {
         const value = bnbAmount ?? 0n;
         if ((nativeBalance?.value ?? 0n) < value) throw new Error(pick("BNB 余额不足", "Insufficient BNB"));
-        await send({
-          address: addresses.relic,
-          abi: relicAbi,
-          functionName: "mintWithBNB",
-          args: [BigInt(maxQuantity)],
-          value,
-        });
+        mintReceipt = (
+          await send({
+            address: addresses.relic,
+            abi: relicAbi,
+            functionName: "mintWithBNB",
+            args: [BigInt(maxQuantity)],
+            value,
+          })
+        ).receipt;
       }
+
+      const ids: bigint[] = [];
+      for (const log of mintReceipt.logs) {
+        if (log.address.toLowerCase() !== addresses.relic.toLowerCase()) continue;
+        try {
+          const decoded = decodeEventLog({
+            abi: relicAbi,
+            eventName: "RelicMinted",
+            data: log.data,
+            topics: log.topics as [`0x${string}`, ...`0x${string}`[]],
+          });
+          if (decoded.eventName !== "RelicMinted") continue;
+          ids.push(decoded.args.tokenId);
+        } catch {
+          // not a RelicMinted event
+        }
+      }
+
       setMintedCount(maxQuantity);
+      setMintedIds(Array.from(new Set(ids)));
       setState("success");
       user.refetch();
     } catch (cause) {
@@ -377,6 +404,26 @@ export default function MintPage() {
         </section>
 
         <aside className="stack">
+          <div className="panel mint-preview">
+            <p className="eyebrow">{pick("你将铸造", "WHAT YOU MINT")}</p>
+            <div className="mint-preview-art">
+              <RelicArt id={5} />
+            </div>
+            <div className="between" style={{ width: "100%" }}>
+              <div>
+                <h3 className="display-md">Relic NFT</h3>
+                <p className="form-hint">10 RELICS → 1 LOOM</p>
+              </div>
+              <span className="tag gold">ERC-721</span>
+            </div>
+            <p className="muted" style={{ fontSize: 12.5 }}>
+              {pick(
+                "每枚 Relic 都是可转让的 ERC-721 资产，十枚可熔炼成一台持续产出的 Loom。",
+                "Each Relic is a transferable ERC-721. Ten of them forge into one yield-bearing Loom.",
+              )}
+            </p>
+          </div>
+
           <div className="panel">
             <p className="eyebrow">{pick("价格阶梯", "PRICE LADDER")}</p>
             <div className="price-table" style={{ marginTop: 14 }}>
@@ -440,6 +487,10 @@ export default function MintPage() {
           </div>
         </aside>
       </div>
+
+      {mintedIds.length > 0 && (
+        <MintReveal ids={mintedIds} onClose={() => setMintedIds([])} />
+      )}
     </div>
   );
 }

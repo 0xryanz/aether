@@ -10,6 +10,7 @@ import { useGlobalStats, useUserData } from "@/hooks/useAetherData";
 import { useI18n, useMounted } from "@/lib/i18n";
 import { formatUnits } from "@/lib/format";
 import { Banner, EmptyState, PageHead, TxStatus } from "@/components/UI";
+import { LoomArt, RelicCard } from "@/components/NftCards";
 
 type TxRequest = {
   address: `0x${string}`;
@@ -147,27 +148,21 @@ export default function ForgePage() {
               </div>
 
               <div className="relic-grid">
-                {user.relicIds.map((id) => {
-                  const isSelected = selected.has(id.toString());
-                  return (
-                    <button
-                      type="button"
-                      key={id.toString()}
-                      className={`relic-card ${isSelected ? "selected" : ""}`}
-                      onClick={() => toggle(id)}
-                      aria-pressed={isSelected}
-                    >
-                      {isSelected && <span className="check">✓</span>}
-                      <span className="rune">◇</span>
-                      <span className="id">#{id.toString()}</span>
-                    </button>
-                  );
-                })}
+                {user.relicIds.map((id) => (
+                  <RelicCard
+                    key={id.toString()}
+                    id={id}
+                    selected={selected.has(id.toString())}
+                    onClick={() => toggle(id)}
+                  />
+                ))}
               </div>
 
               <div className="forge-progress">
-                <div className="meter">
-                  <span style={{ width: `${progress * 10}%` }} />
+                <div className="forge-slots" aria-hidden="true">
+                  {Array.from({ length: 10 }, (_, index) => (
+                    <span key={index} className={index < progress ? "on" : undefined} />
+                  ))}
                 </div>
                 <span className="forge-count">{progress} / 10</span>
               </div>
@@ -227,7 +222,9 @@ export default function ForgePage() {
 
         <aside className="stack">
           <div className="loom-visual">
-            <div className="loom-glyph">◈</div>
+            <div className="loom-preview-art">
+              <LoomArt id={0} tier={2} />
+            </div>
             <div>
               <p className="eyebrow" style={{ justifyContent: "center" }}>
                 {pick("合成预览", "PREVIEW")}

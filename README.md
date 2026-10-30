@@ -38,6 +38,9 @@ aether/
 前置：Node 20+、pnpm、[Foundry](https://book.getfoundry.sh/getting-started/installation)。
 
 ```bash
+# 拉取合约依赖（OpenZeppelin，仓库以 submodule 固定版本）
+git submodule update --init --recursive
+
 # 安装前端依赖
 pnpm --dir web install
 
@@ -72,6 +75,17 @@ pnpm dev:local
 pnpm dev:local -- --no-serve
 pnpm --dir web dev
 ```
+
+若想给自己的钱包（如 MetaMask 账户）打测试 ETH（每次重置链后自动到账）：
+
+```bash
+pnpm dev:local -- --fund 0xYourWalletAddress --fund-amount 1000
+# 或使用环境变量
+FUND_ADDRESS=0xYourWalletAddress FUND_AMOUNT=500 pnpm dev:local
+```
+
+> 默认金额为 1000 ETH，通过真实转账发送（会产生区块，钱包能立即刷新余额）。
+> MetaMask 添加本地网络时 RPC 请填 `http://127.0.0.1:8545`（不要用 `localhost`），Chain ID 填 `31337`。
 
 ---
 

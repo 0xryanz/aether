@@ -10,9 +10,10 @@ import { forgeAbi } from "@/lib/abi";
 import { useLeaderboard, useUserData } from "@/hooks/useAetherData";
 import { useI18n, useMounted } from "@/lib/i18n";
 import { useChainClock } from "@/hooks/useChainClock";
-import { boostTier, formatCountdown, formatUnits, shortAddress } from "@/lib/format";
+import { boostTier, formatUnits, shortAddress } from "@/lib/format";
 import { renderPoster } from "@/lib/poster";
 import { Banner, EmptyState, PageHead, Stat, TxStatus } from "@/components/UI";
+import { LoomCard, RelicCard } from "@/components/NftCards";
 
 type TxRequest = {
   address: `0x${string}`;
@@ -280,27 +281,10 @@ export default function DashboardPage() {
                 cta={{ href: "/forge", label: pick("去合成", "Forge one") }}
               />
             ) : (
-              <div className="loom-list">
-                {user.looms.map((loom) => {
-                  const tier = boostTier(loom.forgeTime, now);
-                  const nextBoundary = loom.forgeTime + (tier === 2 ? 5 * 86400 : tier === 1.5 ? 10 * 86400 : 0);
-                  const left = Math.max(0, nextBoundary - now);
-                  return (
-                    <div className="loom-card" key={loom.id.toString()}>
-                      <span className="glyph">◈</span>
-                      <div>
-                        <h4>Loom #{loom.id.toString()}</h4>
-                        <div className="sub">
-                          {pick("铸造于", "FORGED")} {new Date(loom.forgeTime * 1000).toLocaleDateString()} ·{" "}
-                          {tier === 1 ? pick("基准权重", "BASE WEIGHT") : `${pick("剩余加速", "BOOST LEFT")} ${formatCountdown(left)}`}
-                        </div>
-                      </div>
-                      <span className={`boost-pill ${tier === 2 ? "" : tier === 1.5 ? "cool" : "base"}`}>
-                        ×{tier}
-                      </span>
-                    </div>
-                  );
-                })}
+              <div className="loom-grid">
+                {user.looms.map((loom) => (
+                  <LoomCard key={loom.id.toString()} id={loom.id} forgeTime={loom.forgeTime} now={now} />
+                ))}
               </div>
             )}
 
@@ -402,10 +386,7 @@ export default function DashboardPage() {
             ) : (
               <div className="relic-grid">
                 {user.relicIds.map((id) => (
-                  <div className="relic-card" key={id.toString()}>
-                    <span className="rune">◇</span>
-                    <span className="id">#{id.toString()}</span>
-                  </div>
+                  <RelicCard key={id.toString()} id={id} />
                 ))}
               </div>
             )}

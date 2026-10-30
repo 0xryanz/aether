@@ -2,22 +2,28 @@
 /**
  * One-command local devnet for Aether Forge.
  *
+ * Usage:
  *   pnpm dev:local
+ *   pnpm dev:local --fund 0xYourWallet --fund-amount 1000   # also fund a wallet
  *
  * Starts (or resets) anvil, deploys the contracts, seeds a demo scenario with
  * Looms, referrals, claims and market bids, writes web/.env.local, then starts
  * Next.js. The seeded wallet is anvil account #0.
  */
 import { spawn, spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { accessSync, constants, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   createPublicClient,
   createWalletClient,
+  getAddress,
   http,
+  isAddress,
   keccak256,
   parseAbi,
+  parseEther,
   parseUnits,
   stringToHex,
 } from "viem";
@@ -30,6 +36,32 @@ const ROOT_DIR = resolve(WEB_DIR, "..");
 const CONTRACTS_DIR = join(ROOT_DIR, "contracts");
 const RPC = process.env.ANVIL_RPC ?? "http://127.0.0.1:8545";
 const SERVE = !process.argv.includes("--no-serve");
+
+/** Read `--name value` / `--name=value` from argv, falling back to an env var. */
+function optionValue(name, envName) {
+  const index = process.argv.indexOf(name);
+  if (index !== -1 && process.argv[index + 1] && !process.argv[index + 1].startsWith("--")) {
+    return process.argv[index + 1];
+  }
+  const prefix = `${name}=`;
+  const inline = process.argv.find((value) => value.startsWith(prefix));
+  return inline ? inline.slice(prefix.length) : process.env[envName];
+}
+
+// Optional: send real ETH to a wallet that is not one of the anvil accounts
+// (e.g. the MetaMask account you test with), so it has gas on the local chain.
+const FUND_INPUT = optionValue("--fund", "FUND_ADDRESS");
+const FUND_AMOUNT = optionValue("--fund-amount", "FUND_AMOUNT") ?? "1000";
+let fundTarget = null;
+if (FUND_INPUT) {
+  if (!isAddress(FUND_INPUT, { strict: false })) fail(`invalid --fund address: ${FUND_INPUT}`);
+  fundTarget = getAddress(FUND_INPUT);
+  try {
+    parseEther(FUND_AMOUNT);
+  } catch {
+    fail(`invalid --fund-amount: ${FUND_AMOUNT} (expected a decimal ETH amount, e.g. 1000)`);
+  }
+}
 
 const ANVIL_KEYS = [
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
@@ -68,6 +100,31 @@ const loomAbi = parseAbi(["function nextTokenId() view returns (uint256)"]);
 const marketAbi = parseAbi(["function createOrder(address collection, uint256 tokenId, uint256 price) returns (uint256)"]);
 
 const publicClient = createPublicClient({ chain: hardhat, transport: http(RPC), pollingInterval: 100 });
+
+// Foundry is often installed by foundryup into ~/.foundry/bin, which may not be
+// on the PATH inherited by this script (e.g. when started from an IDE).
+const FOUNDRY_FALLBACK_DIRS = [join(homedir(), ".foundry", "bin"), "/opt/homebrew/bin", "/usr/local/bin"];
+
+function findBinary(name) {
+  const dirs = [...(process.env.PATH ?? "").split(":"), ...FOUNDRY_FALLBACK_DIRS].filter(Boolean);
+  for (const dir of dirs) {
+    const candidate = join(dir, name);
+    try {
+      accessSync(candidate, constants.X_OK);
+      return candidate;
+    } catch {
+      // keep looking
+    }
+  }
+  return null;
+}
+
+const ANVIL_BIN = findBinary("anvil");
+const FORGE_BIN = findBinary("forge");
+
+function missingBinary(name) {
+  fail(`${name} not found. Install Foundry (https://getfoundry.sh) or add ~/.foundry/bin to PATH.`);
+}
 
 function log(message) {
   console.log(`\x1b[38;5;215m[aether]\x1b[0m ${message}`);
@@ -110,7 +167,8 @@ async function ensureAnvil() {
   }
 
   log(`starting anvil on ${RPC}`);
-  const child = spawn("anvil", ["--silent", "--port", "8545"], { detached: true, stdio: "ignore" });
+  if (!ANVIL_BIN) missingBinary("anvil");
+  const child = spawn(ANVIL_BIN, ["--silent", "--port", "8545"], { detached: true, stdio: "ignore" });
   child.unref();
   up = await waitForRpc();
   if (!up) fail("anvil did not start. Is Foundry installed and on PATH?");
@@ -119,8 +177,9 @@ async function ensureAnvil() {
 
 function deploy() {
   log("deploying contracts");
+  if (!FORGE_BIN) missingBinary("forge");
   const result = spawnSync(
-    "forge",
+    FORGE_BIN,
     ["script", "script/Deploy.s.sol:Deploy", "--rpc-url", RPC, "--broadcast", "--with-gas-price", "10gwei"],
     {
       cwd: CONTRACTS_DIR,
@@ -136,8 +195,9 @@ function deploy() {
   );
 
   if (result.status !== 0) {
-    console.error(result.stdout);
-    console.error(result.stderr);
+    if (result.error) fail(`could not run forge: ${result.error.message}`);
+    if (result.stdout) console.error(result.stdout);
+    if (result.stderr) console.error(result.stderr);
     fail("deployment failed");
   }
 
@@ -163,6 +223,19 @@ async function write(index, request) {
   return receipt;
 }
 
+/**
+ * Send native ETH from an anvil account. This is a real transaction, unlike
+ * anvil_setBalance, so wallets see a new block, an incoming transfer and a
+ * refreshed balance.
+ */
+async function fund(index, to, amount) {
+  log(`sending ${amount} ETH to ${to}`);
+  const hash = await wallet(index).sendTransaction({ to, value: parseEther(amount) });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") throw new Error("Funding transaction reverted");
+  return receipt;
+}
+
 async function increaseTime(seconds) {
   await rpc("evm_increaseTime", [seconds]);
   await rpc("evm_mine");
@@ -185,6 +258,8 @@ async function main() {
     ]);
     log("installed Multicall3 for batched reads");
   }
+
+  if (fundTarget) await fund(0, fundTarget, FUND_AMOUNT);
 
   const relic = deployment.relic;
   const forge = deployment.forge;
@@ -362,6 +437,7 @@ NEXT_PUBLIC_RPC_URL=${RPC}
   console.log(`  forge       : ${forge}`);
   console.log(`  market      : ${market}`);
   console.log(`  $AETHER     : ${deployment.aether}`);
+  if (fundTarget) console.log(`  funded      : ${fundTarget}  (${FUND_AMOUNT} ETH)`);
   console.log("");
   console.log("  Import anvil account #0 into your wallet (private key in the Anvil docs).");
   console.log("  If your wallet needs a network: RPC " + RPC + ", chain id 31337.");

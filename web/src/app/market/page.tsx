@@ -12,6 +12,7 @@ import { useI18n, useMounted } from "@/lib/i18n";
 import { useChainClock } from "@/hooks/useChainClock";
 import { formatUnits, parseAmount, shortAddress, timeAgo } from "@/lib/format";
 import { Banner, EmptyState, PageHead, TxStatus } from "@/components/UI";
+import { TokenTile } from "@/components/NftCards";
 
 type TxRequest = {
   address: `0x${string}`;
@@ -372,7 +373,9 @@ export default function MarketPage() {
                         <td className="mono">#{order.id.toString()}</td>
                         <td>
                           <span className="collection">
-                            <span className={`collection-dot ${order.collection.toLowerCase() === addresses.loom.toLowerCase() ? "loom" : ""}`} />
+                            <TokenTile
+                              kind={order.collection.toLowerCase() === addresses.loom.toLowerCase() ? "loom" : "relic"}
+                            />
                             {order.collection.toLowerCase() === addresses.loom.toLowerCase() ? "Loom" : "Relic"}
                           </span>
                         </td>
@@ -443,7 +446,7 @@ function OrderRow({
       <td className="mono">#{order.id.toString()}</td>
       <td>
         <span className="collection">
-          <span className={`collection-dot ${isLoom ? "loom" : ""}`} />
+          <TokenTile kind={isLoom ? "loom" : "relic"} />
           {isLoom ? "Loom" : "Relic"}
         </span>
       </td>
